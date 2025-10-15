@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VIS</title>
+    <style>
+        :root { --green: #22c55e; --red: #ef4444; --gray: #9ca3af; }
+        body { margin: 0; background: #0b1015; color: #e5e7eb; font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: start; height: 100vh; }
+        #imageContainer { position: relative; display: inline-block; }
+        #baseImage { max-width: 100%; height: auto; display: block; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .rect { fill-opacity: 0.6; stroke-width: 2; pointer-events: all; }
+        .rect.green { fill: var(--green); stroke: var(--green); }
+        .rect.red { fill: var(--red); stroke: var(--red); }
+        .rect.gray { fill: var(--gray); stroke: var(--gray); }
+        .label { font-size: 6px; fill: #fff; stroke: rgba(0,0,0,.6); stroke-width: 0; paint-order: stroke; pointer-events: none; }
+    </style>
+</head>
+<body>
+<div id="imageContainer">
+    <img id="baseImage" src="background.png" />
+    <svg id="overlay"></svg>
+</div>
+<script>
+    const overlay = document.querySelector('#overlay');
+    const baseImg = document.querySelector('#baseImage');
+    let sheetData = [];
+    let rects = [];
+
+    const docID = '2PACX-1vTLjPc5F4Jd6LHxDbj2sqrXzcmtkqoezYfAY-WAeVSzlI8DVa0_09urjJlEZe9pw_oeCgSepneiXQQ8';
+
+    function parseCSV(text) {
+        const rows = text.split(/\r?\n/).map(l => l.split(','));
+        return rows.filter(r => r.length >= 2).map(r => ({ addr: r[0].trim(), flag: (r[1]||'').trim().toUpperCase() }));
+    }
+
+    async function loadSheet() {
+        const url = `https://docs.google.com/spreadsheets/d/e/${docID}/pub?gid=0&single=true&output=csv`;
+        const res = await fetch(url, { redirect: 'follow' });
+        if (!res.ok) throw new Error('Failed to fetch CSV.');
+        const text = await res.text();
+        sheetData = parseCSV(text);
+    }
+
+    async function loadMapping() {
+        const res = await fetch('mapping.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('mapping.json not found');
+        const obj = await res.json();
+        rects = Array.isArray(obj.rects) ? obj.rects : [];
+    }
+
+    function colorFor(flag) {
+        if (flag === 'TAK') return 'green';
+        if (flag === 'NIE') return 'red';
+        return 'red';
+    }
+
+    function redraw() {
+        overlay.innerHTML = '';
+        rects.forEach(r => {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            rect.setAttribute('x', r.x);
+            rect.setAttribute('y', r.y);
+            rect.setAttribute('width', r.w);
+            rect.setAttribute('height', r.h);
+            const entry = sheetData.find(s => s.addr === r.addr);
+            const color = colorFor(entry ? entry.flag : '');
+            rect.setAttribute('class', 'rect ' + color);
+            text.setAttribute('x', r.x + 1);
+            text.setAttribute('y', r.y + 12);
+            text.setAttribute('class', 'label');
+            text.textContent = r.addr;
+            overlay.appendChild(rect);
+            overlay.appendChild(text);
+        });
+    }
+
+    baseImg.addEventListener('load', async () => {
+        overlay.setAttribute('viewBox', `0 0 ${baseImg.naturalWidth} ${baseImg.naturalHeight}`);
+        await loadSheet();
+        await loadMapping();
+        redraw();
+    });
+</script>
+</body>
+</html>
