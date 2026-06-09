@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>VIS</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <style>
         :root { --green: #22c55e; --red: #ef4444; --gray: #9ca3af; }
         body { margin: 0; background: #0b1015; color: #e5e7eb; font-family: system-ui, sans-serif; padding: 2rem; }
@@ -29,23 +30,25 @@
 <script>
     const docID = '2PACX-1vTLjPc5F4Jd6LHxDbj2sqrXzcmtkqoezYfAY-WAeVSzlI8DVa0_09urjJlEZe9pw_oeCgSepneiXQQ8';
 
-    function sheetURL(sheetName) {
-        return `https://docs.google.com/spreadsheets/d/e/${docID}/pub?sheet=${encodeURIComponent(sheetName)}&single=true&output=csv`;
+    function sheetURL(fmt) {
+        return `https://docs.google.com/spreadsheets/d/e/${docID}/pub?output=${fmt}`;
     }
 
-    function parseCSV(text) {
-        const rows = text.split(/\r?\n/).map(l => l.split(','));
-        return rows.filter(r => r.length >= 2).map(r => ({ addr: r[0].trim(), flag: (r[1]||'').trim().toUpperCase() }));
-    }
-
-    function parseIndex(text) {
-        const rows = text.split(/\r?\n/).map(l => l.split(','));
+    function parseSheetData(sheet) {
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         return rows.slice(1)
-            .filter(r => r[0] && r[0].trim())
+            .filter(r => r[0])
+            .map(r => ({ addr: String(r[0]).trim(), flag: String(r[1] || '').trim().toUpperCase() }));
+    }
+
+    function parseIndex(sheet) {
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        return rows.slice(1)
+            .filter(r => r[0])
             .map(r => ({
-                sheet: r[0].trim(),
-                title: (r[1] || '').trim(),
-                description: (r[2] || '').trim(),
+                sheet: String(r[0]).trim(),
+                title: String(r[1] || '').trim(),
+                description: String(r[2] || '').trim(),
             }));
     }
 
@@ -75,7 +78,7 @@
         });
     }
 
-    async function renderMap(container, mapDef, rects) {
+    function renderMap(container, mapDef, rects, sheetData) {
         const section = document.createElement('div');
         section.className = 'map-section';
 
@@ -101,49 +104,52 @@
         section.appendChild(imgContainer);
         container.appendChild(section);
 
-        try {
-            const res = await fetch(sheetURL(mapDef.sheet), { redirect: 'follow' });
-            if (!res.ok) throw new Error(`Failed to fetch sheet "${mapDef.sheet}"`);
-            const text = await res.text();
-            const sheetData = parseCSV(text);
-
-            img.addEventListener('load', () => {
-                svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
-                drawOverlay(svg, rects, sheetData);
-            });
-            if (img.complete) {
-                svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
-                drawOverlay(svg, rects, sheetData);
-            }
-        } catch (e) {
-            const err = document.createElement('p');
-            err.className = 'error';
-            err.textContent = e.message;
-            section.appendChild(err);
+        img.addEventListener('load', () => {
+            svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+            drawOverlay(svg, rects, sheetData);
+        });
+        if (img.complete) {
+            svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+            drawOverlay(svg, rects, sheetData);
         }
     }
 
     async function init() {
         const container = document.getElementById('maps');
 
-        const [indexRes, mappingRes] = await Promise.all([
-            fetch(sheetURL('Index'), { redirect: 'follow' }),
+        const [xlsxRes, mappingRes] = await Promise.all([
+            fetch(sheetURL('xlsx'), { redirect: 'follow' }),
             fetch('mapping.json', { cache: 'no-store' }),
         ]);
 
-        if (!indexRes.ok) throw new Error('Failed to fetch Index sheet');
+        if (!xlsxRes.ok) throw new Error('Failed to fetch spreadsheet');
         if (!mappingRes.ok) throw new Error('mapping.json not found');
 
-        const indexText = await indexRes.text();
-        const maps = parseIndex(indexText);
+        const [xlsxBuf, mappingObj] = await Promise.all([
+            xlsxRes.arrayBuffer(),
+            mappingRes.json(),
+        ]);
 
-        const mappingObj = await mappingRes.json();
+        const workbook = XLSX.read(xlsxBuf, { type: 'array' });
         const rects = Array.isArray(mappingObj.rects) ? mappingObj.rects : [];
 
+        const indexSheet = workbook.Sheets['Index'];
+        if (!indexSheet) throw new Error('No "Index" sheet found in spreadsheet');
+
+        const maps = parseIndex(indexSheet);
         container.innerHTML = '';
 
         for (const mapDef of maps) {
-            await renderMap(container, mapDef, rects);
+            const dataSheet = workbook.Sheets[mapDef.sheet];
+            if (!dataSheet) {
+                const err = document.createElement('p');
+                err.className = 'error';
+                err.textContent = `Sheet "${mapDef.sheet}" not found`;
+                container.appendChild(err);
+                continue;
+            }
+            const sheetData = parseSheetData(dataSheet);
+            renderMap(container, mapDef, rects, sheetData);
         }
 
         if (maps.length === 0) {
