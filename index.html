@@ -6,48 +6,47 @@
     <title>VIS</title>
     <style>
         :root { --green: #22c55e; --red: #ef4444; --gray: #9ca3af; }
-        body { margin: 0; background: #0b1015; color: #e5e7eb; font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: start; height: 100vh; }
-        #imageContainer { position: relative; display: inline-block; }
-        #baseImage { max-width: 100%; height: auto; display: block; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        body { margin: 0; background: #0b1015; color: #e5e7eb; font-family: system-ui, sans-serif; padding: 2rem; }
+        .maps { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 3rem; }
+        .map-section h2 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+        .map-section p { margin: 0 0 1rem; color: var(--gray); }
+        .image-container { position: relative; display: inline-block; }
+        .image-container img { max-width: 100%; height: auto; display: block; }
+        .image-container svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         .rect { fill-opacity: 0.6; stroke-width: 2; pointer-events: all; }
         .rect.green { fill: var(--green); stroke: var(--green); }
         .rect.red { fill: var(--red); stroke: var(--red); }
         .rect.gray { fill: var(--gray); stroke: var(--gray); }
         .label { font-size: 6px; fill: #fff; stroke: rgba(0,0,0,.6); stroke-width: 0; paint-order: stroke; pointer-events: none; }
+        .loading { color: var(--gray); font-style: italic; }
+        .error { color: var(--red); }
     </style>
 </head>
 <body>
-<div id="imageContainer">
-    <img id="baseImage" src="background.png" />
-    <svg id="overlay"></svg>
+<div class="maps" id="maps">
+    <p class="loading">Loading maps…</p>
 </div>
 <script>
-    const overlay = document.querySelector('#overlay');
-    const baseImg = document.querySelector('#baseImage');
-    let sheetData = [];
-    let rects = [];
-
     const docID = '2PACX-1vTLjPc5F4Jd6LHxDbj2sqrXzcmtkqoezYfAY-WAeVSzlI8DVa0_09urjJlEZe9pw_oeCgSepneiXQQ8';
+
+    function sheetURL(sheetName) {
+        return `https://docs.google.com/spreadsheets/d/e/${docID}/pub?sheet=${encodeURIComponent(sheetName)}&single=true&output=csv`;
+    }
 
     function parseCSV(text) {
         const rows = text.split(/\r?\n/).map(l => l.split(','));
         return rows.filter(r => r.length >= 2).map(r => ({ addr: r[0].trim(), flag: (r[1]||'').trim().toUpperCase() }));
     }
 
-    async function loadSheet() {
-        const url = `https://docs.google.com/spreadsheets/d/e/${docID}/pub?gid=0&single=true&output=csv`;
-        const res = await fetch(url, { redirect: 'follow' });
-        if (!res.ok) throw new Error('Failed to fetch CSV.');
-        const text = await res.text();
-        sheetData = parseCSV(text);
-    }
-
-    async function loadMapping() {
-        const res = await fetch('mapping.json', { cache: 'no-store' });
-        if (!res.ok) throw new Error('mapping.json not found');
-        const obj = await res.json();
-        rects = Array.isArray(obj.rects) ? obj.rects : [];
+    function parseIndex(text) {
+        const rows = text.split(/\r?\n/).map(l => l.split(','));
+        return rows.slice(1)
+            .filter(r => r[0] && r[0].trim())
+            .map(r => ({
+                sheet: r[0].trim(),
+                title: (r[1] || '').trim(),
+                description: (r[2] || '').trim(),
+            }));
     }
 
     function colorFor(flag) {
@@ -56,8 +55,7 @@
         return 'red';
     }
 
-    function redraw() {
-        overlay.innerHTML = '';
+    function drawOverlay(svg, rects, sheetData) {
         rects.forEach(r => {
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -72,16 +70,89 @@
             text.setAttribute('y', r.y + 12);
             text.setAttribute('class', 'label');
             text.textContent = r.addr;
-            overlay.appendChild(rect);
-            overlay.appendChild(text);
+            svg.appendChild(rect);
+            svg.appendChild(text);
         });
     }
 
-    baseImg.addEventListener('load', async () => {
-        overlay.setAttribute('viewBox', `0 0 ${baseImg.naturalWidth} ${baseImg.naturalHeight}`);
-        await loadSheet();
-        await loadMapping();
-        redraw();
+    async function renderMap(container, mapDef, rects) {
+        const section = document.createElement('div');
+        section.className = 'map-section';
+
+        const h2 = document.createElement('h2');
+        h2.textContent = mapDef.title;
+        section.appendChild(h2);
+
+        if (mapDef.description) {
+            const p = document.createElement('p');
+            p.textContent = mapDef.description;
+            section.appendChild(p);
+        }
+
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'image-container';
+
+        const img = document.createElement('img');
+        img.src = 'background.png';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        imgContainer.appendChild(img);
+        imgContainer.appendChild(svg);
+        section.appendChild(imgContainer);
+        container.appendChild(section);
+
+        try {
+            const res = await fetch(sheetURL(mapDef.sheet), { redirect: 'follow' });
+            if (!res.ok) throw new Error(`Failed to fetch sheet "${mapDef.sheet}"`);
+            const text = await res.text();
+            const sheetData = parseCSV(text);
+
+            img.addEventListener('load', () => {
+                svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+                drawOverlay(svg, rects, sheetData);
+            });
+            if (img.complete) {
+                svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+                drawOverlay(svg, rects, sheetData);
+            }
+        } catch (e) {
+            const err = document.createElement('p');
+            err.className = 'error';
+            err.textContent = e.message;
+            section.appendChild(err);
+        }
+    }
+
+    async function init() {
+        const container = document.getElementById('maps');
+
+        const [indexRes, mappingRes] = await Promise.all([
+            fetch(sheetURL('Index'), { redirect: 'follow' }),
+            fetch('mapping.json', { cache: 'no-store' }),
+        ]);
+
+        if (!indexRes.ok) throw new Error('Failed to fetch Index sheet');
+        if (!mappingRes.ok) throw new Error('mapping.json not found');
+
+        const indexText = await indexRes.text();
+        const maps = parseIndex(indexText);
+
+        const mappingObj = await mappingRes.json();
+        const rects = Array.isArray(mappingObj.rects) ? mappingObj.rects : [];
+
+        container.innerHTML = '';
+
+        for (const mapDef of maps) {
+            await renderMap(container, mapDef, rects);
+        }
+
+        if (maps.length === 0) {
+            container.innerHTML = '<p class="loading">No maps found in Index sheet.</p>';
+        }
+    }
+
+    init().catch(e => {
+        document.getElementById('maps').innerHTML = `<p class="error">${e.message}</p>`;
     });
 </script>
 </body>
