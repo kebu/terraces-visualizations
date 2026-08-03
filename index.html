@@ -27,6 +27,14 @@
         .progress-bar .bg-blue { background: var(--blue); }
         .progress-legend { display: flex; gap: 1.25rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--gray); }
         .progress-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+        .expenses { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+        .expenses th, .expenses td { padding: 0.4rem 0.75rem; text-align: left; border-bottom: 1px solid #1e293b; }
+        .expenses th { color: var(--gray); font-weight: 600; }
+        .expenses tr:hover td { background: #1e293b; }
+        .expenses .num { text-align: right; }
+        .expenses-summary { display: flex; gap: 2rem; margin-top: 1rem; font-size: 0.9rem; }
+        .expenses-summary span { color: var(--gray); }
+        .expenses-summary strong { color: #e5e7eb; }
         .loading { color: var(--gray); font-style: italic; }
         .error { color: var(--red); }
     </style>
@@ -57,7 +65,45 @@
                 sheet: String(r[0]).trim(),
                 title: String(r[1] || '').trim(),
                 description: String(r[2] || '').trim(),
+                wydatki: String(r[3] || '').trim().toUpperCase() === 'TAK',
             }));
+    }
+
+    function parseExpenses(sheet) {
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const summary = {
+            zbiorka: Number(rows[1] && rows[1][5]) || 0,
+            koszty: Number(rows[1] && rows[1][6]) || 0,
+            zostalo: Number(rows[1] && rows[1][7]) || 0,
+        };
+        const items = rows.slice(4)
+            .filter(r => r[5] && r[6])
+            .map(r => ({ lp: r[5], kwota: Number(r[6]) || 0, tytul: String(r[7] || '') }));
+        return { summary, items };
+    }
+
+    function renderExpenses(section, expenses) {
+        const { summary, items } = expenses;
+
+        const sumDiv = document.createElement('div');
+        sumDiv.className = 'expenses-summary';
+        sumDiv.innerHTML = `<span>Zbiórka: <strong>${summary.zbiorka} zł</strong></span>`
+            + `<span>Koszty: <strong>${summary.koszty} zł</strong></span>`
+            + `<span>Zostało: <strong>${summary.zostalo} zł</strong></span>`;
+        section.appendChild(sumDiv);
+
+        if (!items.length) return;
+        const table = document.createElement('table');
+        table.className = 'expenses';
+        table.innerHTML = '<thead><tr><th class="num">Lp</th><th class="num">Kwota</th><th>Tytuł</th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        items.forEach(it => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="num">${it.lp}</td><td class="num">${it.kwota} zł</td><td>${it.tytul}</td>`;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        section.appendChild(table);
     }
 
     function colorFor(flag) {
@@ -131,7 +177,7 @@
         section.appendChild(bar);
     }
 
-    function renderMap(container, mapDef, rects, sheetData) {
+    function renderMap(container, mapDef, rects, sheetData, dataSheet) {
         const section = document.createElement('div');
         section.className = 'map-section';
 
@@ -157,6 +203,12 @@
         imgContainer.appendChild(img);
         imgContainer.appendChild(svg);
         section.appendChild(imgContainer);
+
+        if (mapDef.wydatki) {
+            const expenses = parseExpenses(dataSheet);
+            renderExpenses(section, expenses);
+        }
+
         container.appendChild(section);
 
         img.addEventListener('load', () => {
@@ -204,7 +256,7 @@
                 continue;
             }
             const sheetData = parseSheetData(dataSheet);
-            renderMap(container, mapDef, rects, sheetData);
+            renderMap(container, mapDef, rects, sheetData, dataSheet);
         }
 
         if (maps.length === 0) {
