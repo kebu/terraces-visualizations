@@ -94,7 +94,7 @@
             const entry = sheetData.find(s => s.addr === r.addr);
             counts[colorFor(entry ? entry.flag : '')]++;
         });
-        const pct = k => Math.round(counts[k] / total * 100);
+        const pct = k => Math.round(counts[k] / total * 1000) / 10;
 
         const legend = document.createElement('div');
         legend.className = 'progress-legend';
