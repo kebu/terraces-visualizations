@@ -94,15 +94,27 @@
             const entry = sheetData.find(s => s.addr === r.addr);
             counts[colorFor(entry ? entry.flag : '')]++;
         });
-        const pct = k => Math.round(counts[k] / total * 1000) / 10;
+        const keys = ['green', 'red', 'blue'];
+        const raw = keys.map(k => counts[k] / total * 100);
+        const floored = raw.map(v => Math.floor(v * 100) / 100);
+        const remainder = keys.map((_, i) => raw[i] - floored[i]);
+        let diff = Math.round((100 - floored.reduce((a, b) => a + b, 0)) * 100);
+        const order = keys.map((_, i) => i).sort((a, b) => remainder[b] - remainder[a]);
+        for (const i of order) {
+            if (diff <= 0) break;
+            floored[i] = Math.round((floored[i] + 0.01) * 100) / 100;
+            diff--;
+        }
+        const pcts = {};
+        keys.forEach((k, i) => pcts[k] = floored[i]);
 
         const legend = document.createElement('div');
         legend.className = 'progress-legend';
         legend.innerHTML = [
-            ['green', 'TAK', pct('green')],
-            ['red', 'NIE', pct('red')],
-            ['blue', 'Brak danych', pct('blue')],
-        ].map(([c, label, p]) => `<span><i style="background:var(--${c})"></i>${label}: ${counts[c]} (${p}%)</span>`).join('');
+            ['green', 'TAK', pcts.green],
+            ['red', 'NIE', pcts.red],
+            ['blue', 'Brak danych', pcts.blue],
+        ].map(([c, label, p]) => `<span><i style="background:var(--${c})"></i>${label}: ${counts[c]} (${p.toFixed(2)}%)</span>`).join('');
         section.appendChild(legend);
 
         const bar = document.createElement('div');
