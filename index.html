@@ -20,6 +20,13 @@
         .rect.blue { fill: var(--blue); stroke: var(--blue); }
         .rect.gray { fill: var(--gray); stroke: var(--gray); }
         .label { font-size: 6px; fill: #fff; stroke: rgba(0,0,0,.6); stroke-width: 0; paint-order: stroke; pointer-events: none; }
+        .progress-bar { display: flex; height: 24px; border-radius: 6px; overflow: hidden; background: #1e293b; margin-bottom: 1rem; }
+        .progress-bar span { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; color: #fff; white-space: nowrap; transition: width 0.3s; }
+        .progress-bar .bg-green { background: var(--green); }
+        .progress-bar .bg-red { background: var(--red); }
+        .progress-bar .bg-blue { background: var(--blue); }
+        .progress-legend { display: flex; gap: 1.25rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--gray); }
+        .progress-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
         .loading { color: var(--gray); font-style: italic; }
         .error { color: var(--red); }
     </style>
@@ -79,6 +86,39 @@
         });
     }
 
+    function renderProgressBar(section, rects, sheetData) {
+        const total = rects.length;
+        if (!total) return;
+        const counts = { green: 0, red: 0, blue: 0 };
+        rects.forEach(r => {
+            const entry = sheetData.find(s => s.addr === r.addr);
+            counts[colorFor(entry ? entry.flag : '')]++;
+        });
+        const pct = k => Math.round(counts[k] / total * 100);
+
+        const legend = document.createElement('div');
+        legend.className = 'progress-legend';
+        legend.innerHTML = [
+            ['green', 'TAK', pct('green')],
+            ['red', 'NIE', pct('red')],
+            ['blue', 'Brak danych', pct('blue')],
+        ].map(([c, label, p]) => `<span><i style="background:var(--${c})"></i>${label}: ${counts[c]} (${p}%)</span>`).join('');
+        section.appendChild(legend);
+
+        const bar = document.createElement('div');
+        bar.className = 'progress-bar';
+        ['green', 'red', 'blue'].forEach(c => {
+            const p = pct(c);
+            if (!p) return;
+            const seg = document.createElement('span');
+            seg.className = 'bg-' + c;
+            seg.style.width = p + '%';
+            seg.textContent = p >= 8 ? p + '%' : '';
+            bar.appendChild(seg);
+        });
+        section.appendChild(bar);
+    }
+
     function renderMap(container, mapDef, rects, sheetData) {
         const section = document.createElement('div');
         section.className = 'map-section';
@@ -92,6 +132,8 @@
             p.textContent = mapDef.description;
             section.appendChild(p);
         }
+
+        renderProgressBar(section, rects, sheetData);
 
         const imgContainer = document.createElement('div');
         imgContainer.className = 'image-container';
