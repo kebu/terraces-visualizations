@@ -166,7 +166,7 @@
         const bar = document.createElement('div');
         bar.className = 'progress-bar';
         ['green', 'red', 'blue'].forEach(c => {
-            const p = pct(c);
+            const p = pcts[c];
             if (!p) return;
             const seg = document.createElement('span');
             seg.className = 'bg-' + c;
