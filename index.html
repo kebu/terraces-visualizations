@@ -6,7 +6,7 @@
     <title>VIS</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <style>
-        :root { --green: #22c55e; --red: #ef4444; --gray: #9ca3af; }
+        :root { --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --gray: #9ca3af; }
         body { margin: 0; background: #0b1015; color: #e5e7eb; font-family: system-ui, sans-serif; padding: 2rem; }
         .maps { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 3rem; }
         .map-section h2 { margin: 0 0 0.25rem; font-size: 1.5rem; }
@@ -17,6 +17,7 @@
         .rect { fill-opacity: 0.6; stroke-width: 2; pointer-events: all; }
         .rect.green { fill: var(--green); stroke: var(--green); }
         .rect.red { fill: var(--red); stroke: var(--red); }
+        .rect.blue { fill: var(--blue); stroke: var(--blue); }
         .rect.gray { fill: var(--gray); stroke: var(--gray); }
         .label { font-size: 6px; fill: #fff; stroke: rgba(0,0,0,.6); stroke-width: 0; paint-order: stroke; pointer-events: none; }
         .loading { color: var(--gray); font-style: italic; }
@@ -55,7 +56,7 @@
     function colorFor(flag) {
         if (flag === 'TAK') return 'green';
         if (flag === 'NIE') return 'red';
-        return 'red';
+        return 'blue';
     }
 
     function drawOverlay(svg, rects, sheetData) {
